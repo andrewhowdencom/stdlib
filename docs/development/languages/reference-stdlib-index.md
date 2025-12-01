@@ -4,7 +4,7 @@ This document maintains an index of libraries in `andrewhowdencom/stdlib`. These
 
 ## Libraries
 
-*   **sysexits**: Provides standard system exit codes (based on BSD sysexits.h) for command-line applications. - [https://github.com/andrewhowdencom/stdlib/tree/master/sysexits](https://github.com/andrewhowdencom/stdlib/tree/master/sysexits)
+*   **sysexits**: Provides standard system exit codes (based on BSD sysexits.h) for command-line applications. - [https://github.com/andrewhowdencom/stdlib/tree/master/sysexits/v1](https://github.com/andrewhowdencom/stdlib/tree/master/sysexits/v1)
 
 ## How to Add a Library
 

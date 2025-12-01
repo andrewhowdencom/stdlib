@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/andrewhowdencom/stdlib/sysexits"
+	"github.com/andrewhowdencom/stdlib/sysexits/v1"
 )
 
 func main() {
