@@ -1,0 +1,38 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task: validate
+
+  setup:
+    desc: Install dependencies
+    cmds:
+      - go mod download
+
+  generate:
+    desc: Run go generate
+    cmds:
+      - go generate ./...
+
+  build:
+    desc: Build the code
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run tests
+    cmds:
+      - go test -v -race ./...
+
+  lint:
+    desc: Run linters
+    cmds:
+      - golangci-lint run
+
+  validate:
+    desc: Verify the project (lint, test, build)
+    cmds:
+      - task: lint
+      - task: test
+      - task: build
