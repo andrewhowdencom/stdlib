@@ -18,8 +18,12 @@ This repository contains the following packages:
 
 *   **[http](./http/README.md):** A wrapper around the standard `net/http` library. It enforces aggressive timeouts
     suitable for internal datacenter communication (e.g., 2s total timeout) and provides graceful shutdown capabilities.
-*   **[sysexits](./sysexits/README.md):** A library to map Go errors to standard UNIX exit codes. It allows CLI tools
+*   **[sysexits](./sysexits/v1/README.md):** A library to map Go errors to standard UNIX exit codes. It allows CLI tools
     to return meaningful exit codes to the operating system while using standard Go error handling.
+
+## Stability
+
+Unless a package is explicitly "v1", it is likely very unstable.
 
 ## Installation
 
@@ -34,7 +38,7 @@ go get github.com/andrewhowdencom/stdlib/http
 For the `sysexits` package:
 
 ```bash
-go get github.com/andrewhowdencom/stdlib/sysexits
+go get github.com/andrewhowdencom/stdlib/sysexits/v1
 ```
 
 ## License
