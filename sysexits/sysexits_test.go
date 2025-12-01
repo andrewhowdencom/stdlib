@@ -62,10 +62,10 @@ func TestIs(t *testing.T) {
 		t.Error("expected IOErr and DataErr to be different")
 	}
 
-	if !errors.Is(sysexits.IOErr, sysexits.Sysexit{
+	if !errors.Is(sysexits.Sysexit{
 		Code:    sysexits.IOErr.Code,
 		Message: "random",
-	}) {
+	}, sysexits.IOErr) {
 		t.Error("expected exit code equality to mean error equality")
 	}
 }
