@@ -4,6 +4,9 @@ import (
 	stdhttp "net/http"
 	"time"
 
+	"net/http/httptrace"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -14,16 +17,15 @@ import (
 
 // InstrumentedTransport wraps http.RoundTripper to inject trace context and attributes.
 type InstrumentedTransport struct {
-	Base     stdhttp.RoundTripper
-	Tracer   trace.Tracer
-	Meter    metric.Meter
-	duration metric.Float64Histogram
+	Base            stdhttp.RoundTripper
+	Tracer          trace.Tracer
+	Meter           metric.Meter
+	mWaitTime       metric.Float64Histogram
+	mActiveRequests metric.Int64UpDownCounter
 }
 
 // RoundTrip implements http.RoundTripper.
 func (t *InstrumentedTransport) RoundTrip(req *stdhttp.Request) (*stdhttp.Response, error) {
-	start := time.Now()
-
 	// 1. Inject propagation headers
 	otel.GetTextMapPropagator().Inject(req.Context(), propagation.HeaderCarrier(req.Header))
 
@@ -36,7 +38,39 @@ func (t *InstrumentedTransport) RoundTrip(req *stdhttp.Request) (*stdhttp.Respon
 		span.SetAttributes(clientRequestAttrs(req)...)
 	}
 
-	// 4. Call Base
+	// 4. Trace Events & Wait Time
+	// Wrap the context with a ClientTrace that logs events to the span (via otelhttptrace)
+	// and measures connection wait time.
+	ct := otelhttptrace.NewClientTrace(ctx)
+
+	var getConnTime time.Time
+	originalGetConn := ct.GetConn
+	ct.GetConn = func(hostPort string) {
+		getConnTime = time.Now()
+		if originalGetConn != nil {
+			originalGetConn(hostPort)
+		}
+	}
+
+	originalGotConn := ct.GotConn
+	ct.GotConn = func(info httptrace.GotConnInfo) {
+		if !getConnTime.IsZero() && t.mWaitTime != nil {
+			t.mWaitTime.Record(ctx, time.Since(getConnTime).Seconds())
+		}
+		if originalGotConn != nil {
+			originalGotConn(info)
+		}
+	}
+	req = req.WithContext(httptrace.WithClientTrace(ctx, ct))
+
+	// 5. Active Requests
+	if t.mActiveRequests != nil {
+		attrs := clientRequestAttrs(req)
+		t.mActiveRequests.Add(ctx, 1, metric.WithAttributes(attrs...))
+		defer t.mActiveRequests.Add(ctx, -1, metric.WithAttributes(attrs...))
+	}
+
+	// 6. Call Base
 	// Ensure Base is not nil
 	rt := t.Base
 	if rt == nil {
@@ -54,30 +88,19 @@ func (t *InstrumentedTransport) RoundTrip(req *stdhttp.Request) (*stdhttp.Respon
 		}
 	}
 
-	// 6. Record Metrics
-	if t.duration != nil {
-		attrs := clientRequestAttrs(req)
-		if resp != nil {
-			attrs = append(attrs, clientResponseAttrs(resp)...)
-		}
-		t.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(attrs...))
-	}
-
 	return resp, err
 }
 
 // instrumentedHandler wraps http.Handler to extract trace context and start spans.
 type instrumentedHandler struct {
-	base     stdhttp.Handler
-	tracer   trace.Tracer
-	meter    metric.Meter
-	duration metric.Float64Histogram
+	base            stdhttp.Handler
+	tracer          trace.Tracer
+	meter           metric.Meter
+	mActiveRequests metric.Int64UpDownCounter
 }
 
 // ServeHTTP implements http.Handler.
 func (h *instrumentedHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Request) {
-	start := time.Now()
-
 	// 1. Extract propagation headers
 	ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
 
@@ -90,21 +113,21 @@ func (h *instrumentedHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Req
 	// 3. Add Request Attributes
 	span.SetAttributes(serverRequestAttrs(r)...)
 
-	// 4. Wrap ResponseWriter to capture status code
+	// 4. Active Requests
+	if h.mActiveRequests != nil {
+		attrs := serverRequestAttrs(r)
+		h.mActiveRequests.Add(ctx, 1, metric.WithAttributes(attrs...))
+		defer h.mActiveRequests.Add(ctx, -1, metric.WithAttributes(attrs...))
+	}
+
+	// 5. Wrap ResponseWriter to capture status code
 	rr := &responseRecorder{ResponseWriter: w, statusCode: stdhttp.StatusOK}
 
-	// 5. Serve
+	// 6. Serve
 	h.base.ServeHTTP(rr, r.WithContext(ctx))
 
-	// 6. Add Response Attributes
+	// 7. Add Response Attributes
 	span.SetAttributes(semconv.HTTPResponseStatusCodeKey.Int(rr.statusCode))
-
-	// 7. Record Metrics
-	if h.duration != nil {
-		attrs := serverRequestAttrs(r)
-		attrs = append(attrs, semconv.HTTPResponseStatusCodeKey.Int(rr.statusCode))
-		h.duration.Record(ctx, time.Since(start).Seconds(), metric.WithAttributes(attrs...))
-	}
 }
 
 type responseRecorder struct {
