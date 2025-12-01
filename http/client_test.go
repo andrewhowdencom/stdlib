@@ -58,3 +58,24 @@ func TestNewClient_Options(t *testing.T) {
 		t.Errorf("expected ResponseHeaderTimeout 3s, got %v", tr.ResponseHeaderTimeout)
 	}
 }
+
+func TestNewClient_MaxIdleConns(t *testing.T) {
+	c, err := NewClient()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tr := c.Transport.(*http.Transport)
+	if tr.MaxIdleConns != 100 {
+		t.Errorf("expected default MaxIdleConns 100, got %d", tr.MaxIdleConns)
+	}
+
+	c2, err := NewClient(WithMaxIdleConns(50))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	tr2 := c2.Transport.(*http.Transport)
+	if tr2.MaxIdleConns != 50 {
+		t.Errorf("expected MaxIdleConns 50, got %d", tr2.MaxIdleConns)
+	}
+}

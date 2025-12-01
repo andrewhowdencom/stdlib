@@ -58,37 +58,80 @@ func WithResponseHeaderTimeout(d time.Duration) ClientOption {
 	}
 }
 
+// WithMaxIdleConns sets the maximum number of idle connections.
+func WithMaxIdleConns(n int) ClientOption {
+	return func(c *stdhttp.Client) error {
+		t, ok := c.Transport.(*stdhttp.Transport)
+		if !ok {
+			return errors.New("transport is not *http.Transport")
+		}
+		t.MaxIdleConns = n
+		return nil
+	}
+}
+
+// WithIdleConnTimeout sets the idle connection timeout.
+func WithIdleConnTimeout(d time.Duration) ClientOption {
+	return func(c *stdhttp.Client) error {
+		t, ok := c.Transport.(*stdhttp.Transport)
+		if !ok {
+			return errors.New("transport is not *http.Transport")
+		}
+		t.IdleConnTimeout = d
+		return nil
+	}
+}
+
+// WithExpectContinueTimeout sets the Expect-Continue timeout.
+func WithExpectContinueTimeout(d time.Duration) ClientOption {
+	return func(c *stdhttp.Client) error {
+		t, ok := c.Transport.(*stdhttp.Transport)
+		if !ok {
+			return errors.New("transport is not *http.Transport")
+		}
+		t.ExpectContinueTimeout = d
+		return nil
+	}
+}
+
+// defaultClientOptions defines the aggressive defaults for the client.
+var defaultClientOptions = []ClientOption{
+	WithTimeout(2 * time.Second),
+	WithConnectTimeout(500 * time.Millisecond),
+	WithTLSHandshakeTimeout(500 * time.Millisecond),
+	WithResponseHeaderTimeout(1500 * time.Millisecond),
+	// MaxIdleConns: 100 is the standard library default, but we make it explicit here.
+	WithMaxIdleConns(100),
+	WithIdleConnTimeout(90 * time.Second),
+	WithExpectContinueTimeout(1 * time.Second),
+}
+
 // NewClient returns a new http.Client with sane defaults for internal traffic.
-// Default timeouts:
-// - Total: 2s
-// - Connect: 500ms
-// - TLS Handshake: 500ms
-// - Response Header: 1.5s
+// Defaults are defined in defaultClientOptions.
 func NewClient(opts ...ClientOption) (*stdhttp.Client, error) {
-	// Custom Transport with aggressive defaults
+	// Initialize Transport with base values that are not timeouts
 	t := &stdhttp.Transport{
-		Proxy: stdhttp.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   500 * time.Millisecond,
-			KeepAlive: 30 * time.Second,
-		}).DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          100,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   500 * time.Millisecond,
-		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: 1500 * time.Millisecond,
+		Proxy:             stdhttp.ProxyFromEnvironment,
+		ForceAttemptHTTP2: true,
 	}
 
 	c := &stdhttp.Client{
 		Transport: t,
-		Timeout:   2 * time.Second,
 	}
 
+	// Apply defaults
+	for _, opt := range defaultClientOptions {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
+
+	// Apply user overrides
 	for _, opt := range opts {
 		if err := opt(c); err != nil {
 			return nil, err
 		}
 	}
+
 	return c, nil
 }
