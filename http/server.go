@@ -19,6 +19,13 @@ type Server struct {
 // ServerOption configures the Server.
 type ServerOption func(*Server) error
 
+// defaultServerOptions defines the aggressive defaults for the server.
+var defaultServerOptions = []ServerOption{
+	WithReadTimeout(2 * time.Second),
+	WithWriteTimeout(2 * time.Second),
+	WithIdleTimeout(2 * time.Second),
+}
+
 // WithReadTimeout sets the ReadTimeout.
 func WithReadTimeout(d time.Duration) ServerOption {
 	return func(s *Server) error {
@@ -41,13 +48,6 @@ func WithIdleTimeout(d time.Duration) ServerOption {
 		s.server.IdleTimeout = d
 		return nil
 	}
-}
-
-// defaultServerOptions defines the aggressive defaults for the server.
-var defaultServerOptions = []ServerOption{
-	WithReadTimeout(2 * time.Second),
-	WithWriteTimeout(2 * time.Second),
-	WithIdleTimeout(2 * time.Second),
 }
 
 // NewServer creates a new Server with defaults.

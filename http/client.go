@@ -10,6 +10,18 @@ import (
 // ClientOption is a function that configures a http.Client.
 type ClientOption func(*stdhttp.Client) error
 
+// defaultClientOptions defines the aggressive defaults for the client.
+var defaultClientOptions = []ClientOption{
+	WithTimeout(2 * time.Second),
+	WithConnectTimeout(500 * time.Millisecond),
+	WithTLSHandshakeTimeout(500 * time.Millisecond),
+	WithResponseHeaderTimeout(1500 * time.Millisecond),
+	// MaxIdleConns: 100 is the standard library default, but we make it explicit here.
+	WithMaxIdleConns(100),
+	WithIdleConnTimeout(90 * time.Second),
+	WithExpectContinueTimeout(1 * time.Second),
+}
+
 // WithTimeout sets the total request timeout (Client.Timeout).
 func WithTimeout(d time.Duration) ClientOption {
 	return func(c *stdhttp.Client) error {
@@ -92,18 +104,6 @@ func WithExpectContinueTimeout(d time.Duration) ClientOption {
 		t.ExpectContinueTimeout = d
 		return nil
 	}
-}
-
-// defaultClientOptions defines the aggressive defaults for the client.
-var defaultClientOptions = []ClientOption{
-	WithTimeout(2 * time.Second),
-	WithConnectTimeout(500 * time.Millisecond),
-	WithTLSHandshakeTimeout(500 * time.Millisecond),
-	WithResponseHeaderTimeout(1500 * time.Millisecond),
-	// MaxIdleConns: 100 is the standard library default, but we make it explicit here.
-	WithMaxIdleConns(100),
-	WithIdleConnTimeout(90 * time.Second),
-	WithExpectContinueTimeout(1 * time.Second),
 }
 
 // NewClient returns a new http.Client with sane defaults for internal traffic.
