@@ -1,0 +1,35 @@
+task: [lint] golangci-lint run
+task: [test] go test -v -race ./...
+=== RUN   TestNewClient_Defaults
+--- PASS: TestNewClient_Defaults (0.00s)
+=== RUN   TestNewClient_Options
+--- PASS: TestNewClient_Options (0.00s)
+=== RUN   TestNewClient_MaxIdleConns
+--- PASS: TestNewClient_MaxIdleConns (0.00s)
+=== RUN   TestClientInstrumentation
+--- PASS: TestClientInstrumentation (0.00s)
+=== RUN   TestServerInstrumentation
+--- PASS: TestServerInstrumentation (0.00s)
+=== RUN   TestNewServer_Defaults
+--- PASS: TestNewServer_Defaults (0.00s)
+=== RUN   TestNewServer_Options
+--- PASS: TestNewServer_Options (0.00s)
+PASS
+ok  	github.com/andrewhowdencom/stdlib/http	(cached)
+=== RUN   TestIsError
+=== PAUSE TestIsError
+=== RUN   TestAs
+=== PAUSE TestAs
+=== RUN   TestIs
+=== PAUSE TestIs
+=== CONT  TestIs
+--- PASS: TestIs (0.00s)
+=== CONT  TestIsError
+=== CONT  TestAs
+--- PASS: TestIsError (0.00s)
+--- PASS: TestAs (0.00s)
+=== RUN   ExampleSysexit_Error
+--- PASS: ExampleSysexit_Error (0.00s)
+PASS
+ok  	github.com/andrewhowdencom/stdlib/sysexits	(cached)
+task: [build] go build ./...

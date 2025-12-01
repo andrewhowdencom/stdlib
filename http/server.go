@@ -9,11 +9,17 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Server wraps net/http.Server to provide defaults and graceful shutdown.
 type Server struct {
 	server *stdhttp.Server
+	tracer trace.Tracer
+	meter  metric.Meter
 }
 
 // ServerOption configures the Server.
@@ -24,6 +30,22 @@ var defaultServerOptions = []ServerOption{
 	WithReadTimeout(2 * time.Second),
 	WithWriteTimeout(2 * time.Second),
 	WithIdleTimeout(2 * time.Second),
+}
+
+// WithServerTracerProvider configures the server with a specific tracer provider.
+func WithServerTracerProvider(tp trace.TracerProvider) ServerOption {
+	return func(s *Server) error {
+		s.tracer = tp.Tracer(instrumentationName)
+		return nil
+	}
+}
+
+// WithServerMeterProvider configures the server with a specific meter provider.
+func WithServerMeterProvider(mp metric.MeterProvider) ServerOption {
+	return func(s *Server) error {
+		s.meter = mp.Meter(instrumentationName)
+		return nil
+	}
 }
 
 // WithReadTimeout sets the ReadTimeout.
@@ -73,6 +95,31 @@ func NewServer(addr string, handler stdhttp.Handler, opts ...ServerOption) (*Ser
 			return nil, err
 		}
 	}
+
+	// Finalize instrumentation
+	if s.tracer == nil {
+		s.tracer = otel.GetTracerProvider().Tracer(instrumentationName)
+	}
+	if s.meter == nil {
+		s.meter = otel.GetMeterProvider().Meter(instrumentationName)
+	}
+
+	duration, err := s.meter.Float64Histogram("http.server.request.duration", metric.WithUnit("s"))
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap handler
+	if srv.Handler == nil {
+		srv.Handler = stdhttp.DefaultServeMux
+	}
+	s.server.Handler = &instrumentedHandler{
+		base:     srv.Handler,
+		tracer:   s.tracer,
+		meter:    s.meter,
+		duration: duration,
+	}
+
 	return s, nil
 }
 
