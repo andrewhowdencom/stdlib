@@ -2,6 +2,8 @@
 # Safeties
 set -exuo pipefail
 
+export WRKDIR=$(pwd)
+
 # Install the more recent version of Golang
 cd $(mktemp -d)
 curl --remote-name \
@@ -15,6 +17,8 @@ echo "export PATH=$PATH:/usr/local/go/bin" | sudo tee --append /etc/profile
 . ~/.bashrc
 
 go version
+
+cd "$WRKDIR"
 
 # Install Taskfile
 curl -1sLf 'https://dl.cloudsmith.io/public/task/task/setup.deb.sh' | sudo -E bash
