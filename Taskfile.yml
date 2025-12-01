@@ -9,6 +9,7 @@ tasks:
     desc: Install dependencies
     cmds:
       - go mod download
+      - go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
   generate:
     desc: Run go generate
