@@ -35,7 +35,9 @@ func TestClientInstrumentation(t *testing.T) {
 
 	client, err := NewClient(
 		func(c *http.Client) error {
-			c.Transport = mockTransport
+			c.Transport = &InstrumentedTransport{
+				Base: mockTransport,
+			}
 			return nil
 		},
 		WithClientTracerProvider(tp),

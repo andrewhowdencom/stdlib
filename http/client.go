@@ -1,11 +1,13 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"net"
 	stdhttp "net/http"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -41,22 +43,13 @@ func getTransport(c *stdhttp.Client) (*stdhttp.Transport, error) {
 	return nil, errors.New("transport is not *http.Transport")
 }
 
-// ensureInstrumentedTransport ensures the client transport is wrapped in InstrumentedTransport.
-func ensureInstrumentedTransport(c *stdhttp.Client) *InstrumentedTransport {
-	if it, ok := c.Transport.(*InstrumentedTransport); ok {
-		return it
-	}
-	it := &InstrumentedTransport{
-		Base: c.Transport,
-	}
-	c.Transport = it
-	return it
-}
-
 // WithClientTracerProvider configures the client with a specific tracer provider.
 func WithClientTracerProvider(tp trace.TracerProvider) ClientOption {
 	return func(c *stdhttp.Client) error {
-		it := ensureInstrumentedTransport(c)
+		it, ok := c.Transport.(*InstrumentedTransport)
+		if !ok {
+			return errors.New("client transport must be *InstrumentedTransport")
+		}
 		it.Tracer = tp.Tracer(instrumentationName)
 		return nil
 	}
@@ -65,10 +58,17 @@ func WithClientTracerProvider(tp trace.TracerProvider) ClientOption {
 // WithClientMeterProvider configures the client with a specific meter provider.
 func WithClientMeterProvider(mp metric.MeterProvider) ClientOption {
 	return func(c *stdhttp.Client) error {
-		it := ensureInstrumentedTransport(c)
+		it, ok := c.Transport.(*InstrumentedTransport)
+		if !ok {
+			return errors.New("client transport must be *InstrumentedTransport")
+		}
 		it.Meter = mp.Meter(instrumentationName)
 		var err error
-		it.duration, err = it.Meter.Float64Histogram("http.client.request.duration", metric.WithUnit("s"))
+		it.mWaitTime, err = it.Meter.Float64Histogram("http.client.connection.wait_time", metric.WithUnit("s"))
+		if err != nil {
+			return err
+		}
+		it.mActiveRequests, err = it.Meter.Int64UpDownCounter("http.client.active_requests")
 		return err
 	}
 }
@@ -167,7 +167,10 @@ func NewClient(opts ...ClientOption) (*stdhttp.Client, error) {
 	}
 
 	c := &stdhttp.Client{
-		Transport: t,
+		Transport: &InstrumentedTransport{
+			Base:  t,
+			Meter: otel.GetMeterProvider().Meter(instrumentationName),
+		},
 	}
 
 	// Apply defaults
@@ -184,5 +187,49 @@ func NewClient(opts ...ClientOption) (*stdhttp.Client, error) {
 		}
 	}
 
+	configureClientInstrumentation(c)
 	return c, nil
+}
+
+func configureClientInstrumentation(c *stdhttp.Client) {
+	t, err := getTransport(c)
+	if err != nil || t == nil {
+		return
+	}
+
+	// Wrap DialContext
+	originalDial := t.DialContext
+	if originalDial == nil {
+		panic("DialContext must be set")
+	}
+
+	it, ok := c.Transport.(*InstrumentedTransport)
+	if !ok {
+		return
+	}
+
+	openConns, err := it.Meter.Int64UpDownCounter("http.client.open_connections")
+	if err != nil {
+		return
+	}
+
+	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := originalDial(ctx, network, addr)
+		if err == nil {
+			openConns.Add(ctx, 1)
+			return &trackedConn{Conn: conn, counter: openConns, ctx: ctx}, nil
+		}
+		return conn, err
+	}
+}
+
+type trackedConn struct {
+	net.Conn
+	counter metric.Int64UpDownCounter
+	ctx     context.Context
+}
+
+func (c *trackedConn) Close() error {
+	c.counter.Add(c.ctx, -1)
+	return c.Conn.Close()
 }
