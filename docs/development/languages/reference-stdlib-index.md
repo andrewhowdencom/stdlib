@@ -5,7 +5,6 @@ This document maintains an index of libraries in `andrewhowdencom/stdlib`. These
 ## Libraries
 
 *   **sysexits**: Provides standard system exit codes (based on BSD sysexits.h) for command-line applications. - [https://github.com/andrewhowdencom/stdlib/tree/master/sysexits](https://github.com/andrewhowdencom/stdlib/tree/master/sysexits)
-*   **http**: A wrapper around the standard library `net/http` with opinionated defaults optimized for internal datacenter traffic. - [https://github.com/andrewhowdencom/stdlib/tree/master/http](https://github.com/andrewhowdencom/stdlib/tree/master/http)
 
 ## How to Add a Library
 
