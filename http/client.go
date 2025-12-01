@@ -1,11 +1,13 @@
 package http
 
 import (
+	"context"
 	"errors"
 	"net"
 	stdhttp "net/http"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -47,7 +49,8 @@ func ensureInstrumentedTransport(c *stdhttp.Client) *InstrumentedTransport {
 		return it
 	}
 	it := &InstrumentedTransport{
-		Base: c.Transport,
+		Base:  c.Transport,
+		Meter: otel.GetMeterProvider().Meter(instrumentationName),
 	}
 	c.Transport = it
 	return it
@@ -68,7 +71,11 @@ func WithClientMeterProvider(mp metric.MeterProvider) ClientOption {
 		it := ensureInstrumentedTransport(c)
 		it.Meter = mp.Meter(instrumentationName)
 		var err error
-		it.duration, err = it.Meter.Float64Histogram("http.client.request.duration", metric.WithUnit("s"))
+		it.waitTime, err = it.Meter.Float64Histogram("http.client.connection.wait_time", metric.WithUnit("s"))
+		if err != nil {
+			return err
+		}
+		it.activeRequests, err = it.Meter.Int64UpDownCounter("http.client.active_requests")
 		return err
 	}
 }
@@ -184,5 +191,46 @@ func NewClient(opts ...ClientOption) (*stdhttp.Client, error) {
 		}
 	}
 
+	configureClientInstrumentation(c)
 	return c, nil
+}
+
+func configureClientInstrumentation(c *stdhttp.Client) {
+	t, err := getTransport(c)
+	if err != nil || t == nil {
+		return
+	}
+
+	// Wrap DialContext
+	originalDial := t.DialContext
+	if originalDial == nil {
+		dialer := &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}
+		originalDial = dialer.DialContext
+	}
+
+	it := ensureInstrumentedTransport(c)
+	openConns, err := it.Meter.Int64UpDownCounter("http.client.open_connections")
+	if err != nil {
+		return
+	}
+
+	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := originalDial(ctx, network, addr)
+		if err == nil {
+			openConns.Add(ctx, 1)
+			return &trackedConn{Conn: conn, counter: openConns, ctx: ctx}, nil
+		}
+		return conn, err
+	}
+}
+
+type trackedConn struct {
+	net.Conn
+	counter metric.Int64UpDownCounter
+	ctx     context.Context
+}
+
+func (c *trackedConn) Close() error {
+	c.counter.Add(c.ctx, -1)
+	return c.Conn.Close()
 }
