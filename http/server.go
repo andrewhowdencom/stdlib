@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	stdhttp "net/http"
 	"os"
 	"os/signal"
@@ -17,9 +18,11 @@ import (
 
 // Server wraps net/http.Server to provide defaults and graceful shutdown.
 type Server struct {
-	server *stdhttp.Server
-	tracer trace.Tracer
-	meter  metric.Meter
+	server          *stdhttp.Server
+	tracer          trace.Tracer
+	meter           metric.Meter
+	openConnections metric.Int64UpDownCounter
+	activeRequests  metric.Int64UpDownCounter
 }
 
 // ServerOption configures the Server.
@@ -104,9 +107,23 @@ func NewServer(addr string, handler stdhttp.Handler, opts ...ServerOption) (*Ser
 		s.meter = otel.GetMeterProvider().Meter(instrumentationName)
 	}
 
-	duration, err := s.meter.Float64Histogram("http.server.request.duration", metric.WithUnit("s"))
+	var err error
+	s.openConnections, err = s.meter.Int64UpDownCounter("http.server.open_connections")
 	if err != nil {
 		return nil, err
+	}
+	s.activeRequests, err = s.meter.Int64UpDownCounter("http.server.active_requests")
+	if err != nil {
+		return nil, err
+	}
+
+	s.server.ConnState = func(c net.Conn, cs stdhttp.ConnState) {
+		switch cs {
+		case stdhttp.StateNew:
+			s.openConnections.Add(context.Background(), 1)
+		case stdhttp.StateClosed, stdhttp.StateHijacked:
+			s.openConnections.Add(context.Background(), -1)
+		}
 	}
 
 	// Wrap handler
@@ -114,10 +131,10 @@ func NewServer(addr string, handler stdhttp.Handler, opts ...ServerOption) (*Ser
 		srv.Handler = stdhttp.DefaultServeMux
 	}
 	s.server.Handler = &instrumentedHandler{
-		base:     srv.Handler,
-		tracer:   s.tracer,
-		meter:    s.meter,
-		duration: duration,
+		base:           srv.Handler,
+		tracer:         s.tracer,
+		meter:          s.meter,
+		activeRequests: s.activeRequests,
 	}
 
 	return s, nil

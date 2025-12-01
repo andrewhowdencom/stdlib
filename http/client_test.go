@@ -1,7 +1,6 @@
 package http
 
 import (
-	"net/http"
 	"testing"
 	"time"
 )
@@ -16,9 +15,9 @@ func TestNewClient_Defaults(t *testing.T) {
 		t.Errorf("expected default timeout 2s, got %v", c.Timeout)
 	}
 
-	tr, ok := c.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("expected transport to be *http.Transport")
+	tr, err := getTransport(c)
+	if err != nil {
+		t.Fatalf("expected transport to be *http.Transport: %v", err)
 	}
 
 	if tr.TLSHandshakeTimeout != 500*time.Millisecond {
@@ -45,9 +44,9 @@ func TestNewClient_Options(t *testing.T) {
 		t.Errorf("expected timeout 5s, got %v", c.Timeout)
 	}
 
-	tr, ok := c.Transport.(*http.Transport)
-	if !ok {
-		t.Fatalf("expected transport to be *http.Transport")
+	tr, err := getTransport(c)
+	if err != nil {
+		t.Fatalf("expected transport to be *http.Transport: %v", err)
 	}
 
 	if tr.TLSHandshakeTimeout != 1*time.Second {
@@ -65,7 +64,11 @@ func TestNewClient_MaxIdleConns(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	tr := c.Transport.(*http.Transport)
+	tr, err := getTransport(c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
 	if tr.MaxIdleConns != 100 {
 		t.Errorf("expected default MaxIdleConns 100, got %d", tr.MaxIdleConns)
 	}
@@ -74,7 +77,11 @@ func TestNewClient_MaxIdleConns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	tr2 := c2.Transport.(*http.Transport)
+	tr2, err := getTransport(c2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
 	if tr2.MaxIdleConns != 50 {
 		t.Errorf("expected MaxIdleConns 50, got %d", tr2.MaxIdleConns)
 	}
