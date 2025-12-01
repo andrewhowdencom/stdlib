@@ -51,7 +51,7 @@ func TestClientInstrumentation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Do failed: %v", err)
 	}
-	resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	span.End()
 
 	spans := exporter.GetSpans()
