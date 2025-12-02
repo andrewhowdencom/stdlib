@@ -41,7 +41,7 @@ func (t *InstrumentedTransport) RoundTrip(req *stdhttp.Request) (*stdhttp.Respon
 	// 4. Trace Events & Wait Time
 	// Wrap the context with a ClientTrace that logs events to the span (via otelhttptrace)
 	// and measures connection wait time.
-	ct := otelhttptrace.NewClientTrace(ctx)
+	ct := otelhttptrace.NewClientTrace(ctx, otelhttptrace.WithoutSubSpans())
 
 	var getConnTime time.Time
 	originalGetConn := ct.GetConn
