@@ -126,6 +126,49 @@ func TestServerInstrumentation(t *testing.T) {
 	}
 }
 
+func TestServerInstrumentation_ClientClosed(t *testing.T) {
+	// Set global propagator for test
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Simulate a client closing the request by NOT writing a response, 
+		// but checking that the context is canceled (setup by the test below).
+		// Wait or do nothing.
+	})
+
+	srv, err := NewServer(":0", handler, WithServerTracerProvider(tp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	serverHandler := srv.server.Handler
+
+	req := httptest.NewRequest("GET", "/closed", nil)
+	w := httptest.NewRecorder()
+
+	// Cancel the context explicitly before passing it to ServeHTTP
+	// to simulate the client disconnecting.
+	ctx, cancel := context.WithCancel(req.Context())
+	cancel()
+	req = req.WithContext(ctx)
+
+	serverHandler.ServeHTTP(w, req)
+
+	spans := exporter.GetSpans()
+	if len(spans) != 1 {
+		t.Fatalf("Expected 1 span, got %d", len(spans))
+	}
+	s := spans[0]
+
+	attrs := s.Attributes
+	if !hasAttr(attrs, semconv.HTTPResponseStatusCodeKey.Int(499)) {
+		t.Error("Missing http.response.status_code=499 for closed connection")
+	}
+}
+
 func hasAttr(attrs []attribute.KeyValue, want attribute.KeyValue) bool {
 	for _, a := range attrs {
 		if a.Key == want.Key && a.Value.Emit() == want.Value.Emit() {

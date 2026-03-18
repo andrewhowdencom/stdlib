@@ -16,6 +16,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// StatusClientClosedRequest defines the Nginx-specific HTTP 499 status code 
+// recorded when the client closes the connection before a response is sent.
+const StatusClientClosedRequest = 499
+
 // Server wraps net/http.Server to provide defaults and graceful shutdown.
 type Server struct {
 	server           *stdhttp.Server
