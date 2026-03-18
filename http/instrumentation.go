@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	stdhttp "net/http"
 	"time"
 
@@ -127,7 +128,12 @@ func (h *instrumentedHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Req
 	h.base.ServeHTTP(rr, r.WithContext(ctx))
 
 	// 7. Add Response Attributes
-	span.SetAttributes(semconv.HTTPResponseStatusCodeKey.Int(rr.statusCode))
+	statusCode := rr.statusCode
+	// If the client closed the connection resulting in context cancellation, log as 499
+	if r.Context().Err() != nil && r.Context().Err() == context.Canceled {
+		statusCode = StatusClientClosedRequest
+	}
+	span.SetAttributes(semconv.HTTPResponseStatusCodeKey.Int(statusCode))
 }
 
 type responseRecorder struct {
