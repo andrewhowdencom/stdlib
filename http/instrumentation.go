@@ -138,12 +138,28 @@ func (h *instrumentedHandler) ServeHTTP(w stdhttp.ResponseWriter, r *stdhttp.Req
 
 type responseRecorder struct {
 	stdhttp.ResponseWriter
-	statusCode int
+	statusCode  int
+	wroteHeader bool
 }
 
 func (r *responseRecorder) WriteHeader(statusCode int) {
-	r.statusCode = statusCode
+	if !r.wroteHeader {
+		r.statusCode = statusCode
+		r.wroteHeader = true
+	}
 	r.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (r *responseRecorder) Write(b []byte) (int, error) {
+	if !r.wroteHeader {
+		r.statusCode = stdhttp.StatusOK
+		r.wroteHeader = true
+	}
+	return r.ResponseWriter.Write(b)
+}
+
+func (r *responseRecorder) Unwrap() stdhttp.ResponseWriter {
+	return r.ResponseWriter
 }
 
 // Helpers for extracting attributes
