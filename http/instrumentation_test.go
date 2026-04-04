@@ -169,6 +169,84 @@ func TestServerInstrumentation_ClientClosed(t *testing.T) {
 	}
 }
 
+func TestServerInstrumentation_UnwrapFlusher(t *testing.T) {
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	tp := trace.NewTracerProvider()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rc := http.NewResponseController(w)
+		err := rc.Flush()
+		if err != nil {
+			t.Errorf("Expected flush to succeed, got error: %v", err)
+		}
+		w.WriteHeader(200)
+	})
+
+	srv, err := NewServer(":0", handler, WithServerTracerProvider(tp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+
+	srv.server.Handler.ServeHTTP(w, req)
+}
+
+func TestServerInstrumentation_StatusCapturePriority(t *testing.T) {
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	
+	tests := []struct {
+		name       string
+		handler    http.HandlerFunc
+		wantStatus int
+	}{
+		{
+			name: "multiple write header",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(202)
+				w.WriteHeader(500) // Should be ignored
+			},
+			wantStatus: 202,
+		},
+		{
+			name: "write without write header",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte("hello"))
+				w.WriteHeader(500) // Should be ignored
+			},
+			wantStatus: 200,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exporter := tracetest.NewInMemoryExporter()
+			tp := trace.NewTracerProvider(trace.WithSyncer(exporter))
+
+			srv, err := NewServer(":0", tt.handler, WithServerTracerProvider(tp))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			req := httptest.NewRequest("GET", "/", nil)
+			w := httptest.NewRecorder()
+
+			srv.server.Handler.ServeHTTP(w, req)
+			
+			spans := exporter.GetSpans()
+			if len(spans) != 1 {
+				t.Fatalf("Expected 1 span, got %d", len(spans))
+			}
+			s := spans[0]
+			
+			if !hasAttr(s.Attributes, semconv.HTTPResponseStatusCodeKey.Int(tt.wantStatus)) {
+				t.Errorf("Expected status code %d, got attributes: %v", tt.wantStatus, s.Attributes)
+			}
+		})
+	}
+}
+
 func hasAttr(attrs []attribute.KeyValue, want attribute.KeyValue) bool {
 	for _, a := range attrs {
 		if a.Key == want.Key && a.Value.Emit() == want.Value.Emit() {
