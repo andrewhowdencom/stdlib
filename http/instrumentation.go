@@ -162,6 +162,12 @@ func (r *responseRecorder) Unwrap() stdhttp.ResponseWriter {
 	return r.ResponseWriter
 }
 
+func (r *responseRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(stdhttp.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
 // Helpers for extracting attributes
 
 func clientRequestAttrs(req *stdhttp.Request) []attribute.KeyValue {
