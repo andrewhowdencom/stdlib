@@ -2,7 +2,9 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	stdhttp "net/http"
 	"time"
@@ -105,6 +107,28 @@ func WithTLSHandshakeTimeout(d time.Duration) ClientOption {
 			return err
 		}
 		t.TLSHandshakeTimeout = d
+		return nil
+	}
+}
+
+// WithTLSKeyLogWriter writes TLS secrets in NSS key log format to writer.
+// Keep writer open while requests are active. A nil writer disables key logging.
+// The key log and a packet capture can reveal request bodies and credentials.
+func WithTLSKeyLogWriter(writer io.Writer) ClientOption {
+	return func(c *stdhttp.Client) error {
+		t, err := getTransport(c)
+		if err != nil {
+			return err
+		}
+		if t.TLSClientConfig == nil {
+			if writer == nil {
+				return nil
+			}
+			t.TLSClientConfig = &tls.Config{}
+		} else {
+			t.TLSClientConfig = t.TLSClientConfig.Clone()
+		}
+		t.TLSClientConfig.KeyLogWriter = writer
 		return nil
 	}
 }
